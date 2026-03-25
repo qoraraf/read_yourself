@@ -20,6 +20,7 @@ export default function App() {
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const ttsCacheRef = useRef<Record<string, string>>({});
 
   const currentStory = STORIES[storyIndex];
 
@@ -128,7 +129,16 @@ export default function App() {
     const textToSpeak = `تقرأ الكلمة كما يلي: ${word}`;
     
     try {
-      const base64Audio = await generateSpeech(textToSpeak);
+      let base64Audio = ttsCacheRef.current[word];
+      
+      if (!base64Audio) {
+        const fetchedAudio = await generateSpeech(textToSpeak);
+        if (fetchedAudio) {
+          base64Audio = fetchedAudio;
+          ttsCacheRef.current[word] = base64Audio;
+        }
+      }
+
       if (base64Audio) {
         const binaryString = atob(base64Audio);
         const bytes = new Uint8Array(binaryString.length);
