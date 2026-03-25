@@ -99,6 +99,27 @@ export default function App() {
 
   const [isPlaying, setIsPlaying] = useState(false);
 
+  const fallbackToBrowserTTS = (text: string) => {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'ar-SA';
+    utterance.rate = 0.9;
+    utterance.pitch = 1.0;
+
+    const voices = window.speechSynthesis.getVoices();
+    const arabicVoices = voices.filter(v => v.lang.startsWith('ar'));
+    if (arabicVoices.length > 0) {
+      const bestVoice = arabicVoices.find(v => v.name.includes('Google') || v.name.includes('Premium') || v.name.includes('Majed')) || arabicVoices[0];
+      utterance.voice = bestVoice;
+    }
+
+    utterance.onend = () => setIsPlaying(false);
+    utterance.onerror = () => setIsPlaying(false);
+
+    (window as any).currentUtterance = utterance;
+    window.speechSynthesis.speak(utterance);
+  };
+
   const playPronunciation = async (word: string) => {
     if (isPlaying) return;
     setIsPlaying(true);
@@ -139,11 +160,12 @@ export default function App() {
         source.onended = () => setIsPlaying(false);
         source.start();
       } else {
-        setIsPlaying(false);
+        console.warn("AI TTS failed (likely quota exceeded), falling back to browser TTS.");
+        fallbackToBrowserTTS(textToSpeak);
       }
     } catch (error) {
       console.error("Error playing pronunciation:", error);
-      setIsPlaying(false);
+      fallbackToBrowserTTS(textToSpeak);
     }
   };
 
