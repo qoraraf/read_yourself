@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { Mic, Square, RefreshCw, Volume2, Star, ArrowRight, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { analyzeReading, ReadingFeedback } from './services/ai';
+import { analyzeReading, ReadingFeedback, generateSpeech } from './services/ai';
 
 const STORIES = [
   "جَلَسَ الْقِطُّ الصَّغِيرُ عَلَى السَّجَّادَةِ. كَانَ قِطًّا سَعِيدًا جِدًّا.",
@@ -97,12 +97,55 @@ export default function App() {
     });
   };
 
-  const playPronunciation = (word: string) => {
-    const utterance = new SpeechSynthesisUtterance(word);
-    utterance.lang = 'ar-SA';
-    utterance.rate = 0.8; // Slower for kids
-    utterance.pitch = 1.2; // Slightly higher pitch
-    window.speechSynthesis.speak(utterance);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  const playPronunciation = async (word: string) => {
+    if (isPlaying) return;
+    setIsPlaying(true);
+    
+    // Using a carrier phrase gives the audio engine time to "warm up" and prevents short words from being clipped.
+    const textToSpeak = `تقرأ الكلمة كما يلي: ${word}`;
+    
+    try {
+      const base64Audio = await generateSpeech(textToSpeak);
+      if (base64Audio) {
+        const binaryString = atob(base64Audio);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+
+        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        try {
+          // Try to decode as standard audio (WAV/MP3) first
+          const audioBuffer = await audioContext.decodeAudioData(bytes.buffer.slice(0));
+          const source = audioContext.createBufferSource();
+          source.buffer = audioBuffer;
+          source.connect(audioContext.destination);
+          source.onended = () => setIsPlaying(false);
+          source.start();
+        } catch (e) {
+          // Fallback to raw PCM 16-bit 24000Hz
+          const pcmContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+          const buffer = pcmContext.createBuffer(1, bytes.length / 2, 24000);
+          const channelData = buffer.getChannelData(0);
+          const dataView = new DataView(bytes.buffer);
+          for (let i = 0; i < channelData.length; i++) {
+            channelData[i] = dataView.getInt16(i * 2, true) / 32768.0;
+          }
+          const source = pcmContext.createBufferSource();
+          source.buffer = buffer;
+          source.connect(pcmContext.destination);
+          source.onended = () => setIsPlaying(false);
+          source.start();
+        }
+      } else {
+        setIsPlaying(false);
+      }
+    } catch (error) {
+      console.error("Error playing pronunciation:", error);
+      setIsPlaying(false);
+    }
   };
 
   // Split story into words and punctuation for rendering
@@ -287,10 +330,11 @@ export default function App() {
                 whileHover={{ scale: 1.1 }}
                 whileTap={{ scale: 0.9 }}
                 onClick={() => playPronunciation(selectedWord.word)}
-                className="shrink-0 bg-sky-100 hover:bg-sky-200 text-sky-600 p-5 rounded-full transition-colors"
+                disabled={isPlaying}
+                className={`shrink-0 p-5 rounded-full transition-colors ${isPlaying ? 'bg-sky-200 text-sky-400 cursor-not-allowed' : 'bg-sky-100 hover:bg-sky-200 text-sky-600'}`}
                 aria-label="Listen to pronunciation"
               >
-                <Volume2 className="w-8 h-8" />
+                {isPlaying ? <RefreshCw className="w-8 h-8 animate-spin" /> : <Volume2 className="w-8 h-8" />}
               </motion.button>
             </motion.div>
           )}
