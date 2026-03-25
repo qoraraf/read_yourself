@@ -116,29 +116,28 @@ export default function App() {
         }
 
         const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-        try {
-          // Try to decode as standard audio (WAV/MP3) first
-          const audioBuffer = await audioContext.decodeAudioData(bytes.buffer.slice(0));
-          const source = audioContext.createBufferSource();
-          source.buffer = audioBuffer;
-          source.connect(audioContext.destination);
-          source.onended = () => setIsPlaying(false);
-          source.start();
-        } catch (e) {
-          // Fallback to raw PCM 16-bit 24000Hz
-          const pcmContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-          const buffer = pcmContext.createBuffer(1, bytes.length / 2, 24000);
-          const channelData = buffer.getChannelData(0);
-          const dataView = new DataView(bytes.buffer);
-          for (let i = 0; i < channelData.length; i++) {
-            channelData[i] = dataView.getInt16(i * 2, true) / 32768.0;
-          }
-          const source = pcmContext.createBufferSource();
-          source.buffer = buffer;
-          source.connect(pcmContext.destination);
-          source.onended = () => setIsPlaying(false);
-          source.start();
+        
+        // Some browsers require explicitly resuming the audio context
+        if (audioContext.state === 'suspended') {
+          await audioContext.resume();
         }
+
+        // Gemini TTS returns raw 16-bit PCM audio at 24000Hz
+        const sampleRate = 24000;
+        const buffer = audioContext.createBuffer(1, bytes.length / 2, sampleRate);
+        const channelData = buffer.getChannelData(0);
+        const dataView = new DataView(bytes.buffer);
+        
+        for (let i = 0; i < channelData.length; i++) {
+          // Read 16-bit little-endian PCM samples and normalize to [-1.0, 1.0]
+          channelData[i] = dataView.getInt16(i * 2, true) / 32768.0;
+        }
+        
+        const source = audioContext.createBufferSource();
+        source.buffer = buffer;
+        source.connect(audioContext.destination);
+        source.onended = () => setIsPlaying(false);
+        source.start();
       } else {
         setIsPlaying(false);
       }
@@ -153,18 +152,22 @@ export default function App() {
     // \p{L} matches letters from any language, \p{M} matches marks (diacritics), \p{N} matches numbers
     const tokens = currentStory.split(/([\p{L}\p{M}\p{N}]+)/gu);
     
+    let currentWordIndex = 0;
+
     return tokens.map((token, index) => {
       // Check if this token is a word
       if (!/[\p{L}\p{N}]/u.test(token)) {
         return <span key={index}>{token}</span>;
       }
 
+      const thisWordIndex = currentWordIndex++;
+
       // Normalize for comparison (remove Arabic diacritics if any)
       const normalize = (str: string) => str.replace(/[\u064B-\u065F\u0670]/g, '').toLowerCase();
       
-      const wordFeedback = feedback.find(f => normalize(f.word) === normalize(token));
+      const wordFeedback = feedback.find(f => normalize(f.word) === normalize(token) && f.wordIndex === thisWordIndex);
       const isHighlighted = !!wordFeedback;
-      const isSelected = selectedWord && normalize(selectedWord.word) === normalize(token);
+      const isSelected = selectedWord && normalize(selectedWord.word) === normalize(token) && selectedWord.wordIndex === thisWordIndex;
 
       if (isHighlighted) {
         return (

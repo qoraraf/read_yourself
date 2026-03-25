@@ -4,6 +4,7 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 export interface ReadingFeedback {
   word: string;
+  wordIndex: number;
   feedback: string;
   phonetic: string;
 }
@@ -41,7 +42,7 @@ export async function analyzeReading(text: string, audioBase64: string, mimeType
             text: `You are a friendly, encouraging reading teacher for kids. The child is reading the following Arabic text: "${text}". 
             Listen to the audio and identify any words the child mispronounced, skipped, or struggled with. 
             If they read perfectly, return an empty array. Do not be overly strict, but catch obvious mistakes.
-            Provide the feedback and phonetic spelling in Arabic.` 
+            Provide the feedback and phonetic spelling in Arabic. Also provide the 0-based index of the word in the text (counting only words, ignoring punctuation and spaces. The first word is index 0, the second is index 1, etc.).` 
           },
           { 
             inlineData: { data: audioBase64, mimeType } 
@@ -57,10 +58,11 @@ export async function analyzeReading(text: string, audioBase64: string, mimeType
           type: Type.OBJECT,
           properties: {
             word: { type: Type.STRING, description: "The exact word from the text that was incorrect (case-insensitive)" },
+            wordIndex: { type: Type.INTEGER, description: "The 0-based index of the word in the story (counting only words, not punctuation)" },
             feedback: { type: Type.STRING, description: "A short, encouraging tip on how to say it" },
             phonetic: { type: Type.STRING, description: "Simple phonetic spelling (e.g., 'kuh-at' for cat)" }
           },
-          required: ["word", "feedback", "phonetic"]
+          required: ["word", "wordIndex", "feedback", "phonetic"]
         }
       }
     }
