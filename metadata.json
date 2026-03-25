@@ -1,0 +1,5 @@
+{
+  "name": "Reading Buddy",
+  "description": "An AI-powered app that helps children practice reading by listening to them and highlighting words they need help with.",
+  "requestFramePermissions": ["microphone"]
+}
